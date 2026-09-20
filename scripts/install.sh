@@ -157,8 +157,9 @@ fetch_source() {
     curl -fsSL "https://github.com/$REPO/archive/$REPO_REF.tar.gz" |
       tar -xzf - -C "$tmp" --strip-components=1
   fi
-  [ -f "$tmp/src/main.py" ] && [ -f "$tmp/requirements.txt" ] ||
+  if [ ! -f "$tmp/src/main.py" ] || [ ! -f "$tmp/requirements.txt" ]; then
     die "取得したソースに src/main.py または requirements.txt がありません"
+  fi
 
   mkdir -p "$APP_DIR"
   rm -rf "$APP_DIR/src"
