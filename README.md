@@ -98,6 +98,31 @@ wget -O - https://github.com/nllacc/kaikei-san/releases/download/main/install.sh
 - 設定変更後の再起動: Alpine は `rc-service kaikei-san restart`、Ubuntu / Debian は `systemctl restart kaikei-san`
 - 削除: `sh install.sh --uninstall`（設定とデータベースを残す）／ `sh install.sh --uninstall --purge`（すべて削除）
 
+## バックアップ / 復元
+
+データベース（SQLite）をファイルへ出力・復元するスクリプト [scripts/backup.sh](scripts/backup.sh) を用意しています。
+docker-compose 構成と LXC / VM（`install.sh`）構成のどちらでも同じコマンドで使え、構成は自動判別されます
+（両方が存在する場合は `--mode docker` または `--mode native` で指定してください）。
+稼働中でも整合性のあるバックアップを取得できます。
+
+```sh
+# バックアップ（出力先省略時は ./kaikei-日時.db）
+sh scripts/backup.sh backup
+sh scripts/backup.sh backup /path/to/kaikei.db
+
+# 復元（サービスを一時停止して差し替え、完了後に再開します）
+sh scripts/backup.sh restore /path/to/kaikei.db
+```
+
+- 復元前に、現在のDBがカレントディレクトリへ `kaikei-pre-restore-日時.db` として自動退避されます。
+- 復元時は入力ファイルの整合性（`integrity_check` と `transactions` テーブルの有無）を検証します。確認プロンプトは `--yes` で省略できます。
+- docker 構成では `docker-compose.yaml` のあるリポジトリ内で実行してください（`COMPOSE_FILE` で別ファイルも指定可）。
+- `install.sh` 構成では root で実行してください。インストーラはこのスクリプトを配置しないため、次のように取得できます。
+
+  ```sh
+  wget -O backup.sh https://raw.githubusercontent.com/nllacc/kaikei-san/main/scripts/backup.sh
+  ```
+
 ## 開発
 
 ### テストの実行
