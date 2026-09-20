@@ -81,7 +81,7 @@ Docker を使わず、Alpine / Ubuntu / Debian の LXC コンテナや VM へ直
 root で以下を実行してください（Alpine は OpenRC、Ubuntu / Debian は systemd のサービスとして登録されます）。
 
 ```sh
-wget -O - https://github.com/nllacc/kaikei-san/releases/latest/download/install.sh | TOKEN=XXXXXXXXXXXXXXX sh
+wget -O - https://github.com/nllacc/kaikei-san/releases/download/main/install.sh | TOKEN=XXXXXXXXXXXXXXX sh
 ```
 
 `TOKEN` のほか、`GUILD_ID`・`LOG_LEVEL` も同様に環境変数で渡せます（初回の設定ファイル生成時のみ使用）。
