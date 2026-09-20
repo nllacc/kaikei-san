@@ -42,12 +42,9 @@ cd kaikei-san
 TOKEN=XXXXXXXXXXXXXXX
 GUILD_ID=XXXXXXXXXXXXXXX
 LOG_LEVEL=INFO
-CHANNEL_ID=XXXXXXXXXXXXXXX
 ```
 
 `GUILD_ID`を指定すると、スラッシュコマンドがそのギルド専用コマンドとして即座に反映されます（グローバルコマンドはDiscord側の反映に最大1時間程度かかるため、動作確認や開発時に有用です）。未指定の場合はグローバルコマンドとして登録されます。
-
-`CHANNEL_ID`を指定すると、起動時・終了時メッセージを送信します。
 
 コンテナを起動します。
 
@@ -77,6 +74,29 @@ docker-compose down --rmi all
 ```sh
 docker volume rm kaikeisan_kaikeisan-data
 ```
+
+## LXC / VM へのインストール (Alpine・Ubuntu・Debian)
+
+Docker を使わず、Alpine / Ubuntu / Debian の LXC コンテナや VM へ直接インストールできます。
+root で以下を実行してください（Alpine は OpenRC、Ubuntu / Debian は systemd のサービスとして登録されます）。
+
+```sh
+curl -fsSL https://github.com/nllacc/kaikei-san/releases/latest/download/install.sh | TOKEN=XXXXXXXXXXXXXXX sh
+```
+
+`TOKEN` のほか、`GUILD_ID`・`LOG_LEVEL` も同様に環境変数で渡せます（初回の設定ファイル生成時のみ使用）。
+`TOKEN` を省略して端末から実行した場合は入力を求められます。
+
+| 項目 | パス |
+|---|---|
+| プログラム | `/opt/kaikei-san` |
+| 設定 (`.env` 相当) | `/etc/kaikei-san/kaikei-san.env` |
+| データベース | `/var/lib/kaikei-san/kaikei.db` |
+
+- 更新: 同じコマンドを再実行します（設定とデータベースは保持されます）。特定バージョンは `REPO_REF=v1.0.0` で指定できます。
+- ログ: Alpine は `/var/log/kaikei-san.log`、Ubuntu / Debian は `journalctl -u kaikei-san`
+- 設定変更後の再起動: Alpine は `rc-service kaikei-san restart`、Ubuntu / Debian は `systemctl restart kaikei-san`
+- 削除: `sh install.sh --uninstall`（設定とデータベースを残す）／ `sh install.sh --uninstall --purge`（すべて削除）
 
 ## 開発
 

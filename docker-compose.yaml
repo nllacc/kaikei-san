@@ -7,7 +7,6 @@ services:
       TOKEN: ${TOKEN}
       GUILD_ID: ${GUILD_ID}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      CHANNEL_ID: ${CHANNEL_ID}
     volumes:
       - kaikeisan-data:/workspace/data
 

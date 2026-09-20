@@ -1,0 +1,55 @@
+name: release-installer
+
+# ブランチ push: ローリング prerelease (installer-<branch>) に ref 固定版を添付
+# タグ push (v*): 通常の Release に添付
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+    paths:
+      - scripts/install.sh
+      - .github/workflows/release-installer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 構文チェック
+        run: |
+          sh -n scripts/install.sh
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -s sh scripts/install.sh
+
+      - name: ref を埋め込む
+        run: |
+          set -eu
+          ref="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          sed -e "s|^REPO_REF_DEFAULT=.*|REPO_REF_DEFAULT=\"$ref\"|" \
+            scripts/install.sh >dist/install.sh
+          sh -n dist/install.sh
+          grep -q "^REPO_REF_DEFAULT=\"$ref\"" dist/install.sh
+
+      - name: 公開
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+              gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+            gh release upload "$GITHUB_REF_NAME" dist/install.sh --clobber
+          else
+            # ブランチ名の / は - に変換する
+            tag="$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+            gh release view "$tag" >/dev/null 2>&1 ||
+              gh release create "$tag" --prerelease --target "$GITHUB_SHA" \
+                --title "$tag" --notes "ブランチ $GITHUB_REF_NAME 用のインストーラ (自動更新)"
+            gh release upload "$tag" dist/install.sh --clobber
+          fi
