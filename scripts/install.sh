@@ -154,8 +154,15 @@ fetch_source() {
     tar -xzf "$SRC_TARBALL" -C "$tmp" --strip-components=1
   else
     log "ソースを取得: $REPO@$REPO_REF"
-    curl -fsSL "https://github.com/$REPO/archive/$REPO_REF.tar.gz" |
-      tar -xzf - -C "$tmp" --strip-components=1
+    # ローリング prerelease がブランチ名と同名のタグを作るため、ref 名だけだと
+    # GitHub が HTTP 300 (曖昧) を返す。ブランチ → タグの順に完全修飾名で取得する
+    base="https://github.com/$REPO/archive"
+    if ! curl -fsSL -o "$tmp/src.tar.gz" "$base/refs/heads/$REPO_REF.tar.gz" &&
+      ! curl -fsSL -o "$tmp/src.tar.gz" "$base/refs/tags/$REPO_REF.tar.gz"; then
+      die "ソースの取得に失敗しました: $REPO@$REPO_REF (リポジトリが非公開の場合は取得できません)"
+    fi
+    tar -xzf "$tmp/src.tar.gz" -C "$tmp" --strip-components=1
+    rm -f "$tmp/src.tar.gz"
   fi
   if [ ! -f "$tmp/src/main.py" ] || [ ! -f "$tmp/requirements.txt" ]; then
     die "取得したソースに src/main.py または requirements.txt がありません"
