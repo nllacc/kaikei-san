@@ -9,6 +9,7 @@ from discord.commands import Option
 
 import db
 import formatting
+import interaction
 import repository
 
 TOKEN = os.environ["TOKEN"]
@@ -58,6 +59,8 @@ async def lend(
         user.id,
         amount,
     )
+    if not await interaction.acquire_interaction(ctx, command="lend", logger=logger):
+        return
     try:
         repository.add_lend(
             connection,
@@ -89,6 +92,8 @@ async def borrow(
         user.id,
         amount,
     )
+    if not await interaction.acquire_interaction(ctx, command="borrow", logger=logger):
+        return
     try:
         repository.add_borrow(
             connection,
@@ -109,6 +114,8 @@ async def borrow(
 @bot.command(name="kaikei", description="あなたの貸し借りサマリーを表示します")
 async def kaikei(ctx: discord.ApplicationContext):
     logger.info("command=kaikei guild_id=%s user_id=%s", ctx.guild_id, ctx.author.id)
+    if not await interaction.acquire_interaction(ctx, command="kaikei", logger=logger):
+        return
     entries = repository.get_summary(connection, guild_id=ctx.guild_id, user_id=ctx.author.id)
     await ctx.respond(formatting.format_summary(entries))
 
@@ -127,6 +134,8 @@ async def history(
     logger.info(
         "command=history guild_id=%s user_id=%s month=%s", ctx.guild_id, ctx.author.id, month
     )
+    if not await interaction.acquire_interaction(ctx, command="history", logger=logger):
+        return
 
     if month is None:
         start_at, end_at = repository.recent_range_utc()

@@ -75,6 +75,14 @@ docker-compose down --rmi all
 docker volume rm kaikeisan_kaikeisan-data
 ```
 
+## 重複起動について
+
+同じ TOKEN の bot は 1 つだけ稼働させてください（Docker 版と LXC / VM 版を同時に動かさないでください）。複数稼働していると、コマンドを最初に受け付けたインスタンスだけが記録・応答し、他のインスタンスは処理を中断して以下のようなエラーログを出力します。このログが出た場合は、別ホストも含めて他に稼働しているインスタンスを停止してください。
+
+```
+ERROR command=lend guild_id=... user_id=... 応答の確保に失敗したため処理を中断しました。同じTOKENで別のインスタンスが稼働している可能性があります (status=400 code=40060)
+```
+
 ## LXC / VM へのインストール (Alpine・Ubuntu・Debian)
 
 Docker を使わず、Alpine / Ubuntu / Debian の LXC コンテナや VM へ直接インストールできます。
