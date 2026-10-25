@@ -87,29 +87,51 @@ ERROR command=lend guild_id=... user_id=... 応答の確保に失敗したため
 
 Docker を使わず、Alpine / Ubuntu / Debian の LXC コンテナや VM へ直接インストールできます。
 root で以下を実行してください（Alpine は OpenRC、Ubuntu / Debian は systemd のサービスとして登録されます）。
+`TOKEN` は `--set` ではなく環境変数で渡してください（`--set` の値はプロセス一覧やシェルの履歴に残ります）。
 
 ```sh
-wget -O - https://github.com/nllacc/kaikei-san/releases/download/main/install.sh | TOKEN=XXXXXXXXXXXXXXX sh
+wget -qO- https://github.com/nllacc/kaikei-san/releases/latest/download/install.sh | sudo env TOKEN=XXXXXXXXXXXXXXX sh -s -- install
 ```
 
-`TOKEN` のほか、`GUILD_ID`・`LOG_LEVEL` も同様に環境変数で渡せます（初回の設定ファイル生成時のみ使用）。
-`TOKEN` を省略して端末から実行した場合は入力を求められます。
+- curl がある環境では `curl -fsSL <URL> | sudo env TOKEN=… sh -s -- install` でも同じです。
+- 版を固定する場合は `…/releases/download/<タグ>/install.sh` を使います。
+- 開発中のブランチを導入する場合は `install --ref <ブランチ名>` を付けます。
 
-| 項目 | パス |
+導入後は常設コマンド `kaikei-san-ctl` で操作します。
+
+| 操作 | コマンド |
 |---|---|
-| プログラム | `/opt/kaikei-san` |
-| 設定 (`.env` 相当) | `/etc/kaikei-san/kaikei-san.env` |
-| データベース | `/var/lib/kaikei-san/kaikei.db` |
+| 更新（導入中のタグ・ブランチの最新へ） | `sudo kaikei-san-ctl update` |
+| タグ・ブランチの切り替え | `sudo kaikei-san-ctl update --ref <名前>` |
+| 状態の表示 | `sudo kaikei-san-ctl status` |
+| 取得元のタグ・ブランチの一覧 | `sudo kaikei-san-ctl refs` |
+| 削除（設定とデータベースを残す） | `sudo kaikei-san-ctl uninstall` |
+| 完全に削除 | `sudo kaikei-san-ctl uninstall --purge` |
 
-- 更新: 同じコマンドを再実行します（設定とデータベースは保持されます）。特定バージョンは `REPO_REF=v1.0.0` で指定できます。
-- ログ: Alpine は `/var/log/kaikei-san.log`、Ubuntu / Debian は `journalctl -u kaikei-san`
-- 設定変更後の再起動: Alpine は `rc-service kaikei-san restart`、Ubuntu / Debian は `systemctl restart kaikei-san`
-- 削除: `sh install.sh --uninstall`（設定とデータベースを残す）／ `sh install.sh --uninstall --purge`（すべて削除）
+設定ファイル `/etc/kaikei-san/kaikei-san.env` のキーは次のとおりです。手で編集した後は `sudo kaikei-san-ctl update` を実行すると反映されます（サービスが再起動されます）。
+
+| キー | 既定値 | 内容 |
+|---|---|---|
+| `TOKEN` | （必須） | Discord bot のトークン |
+| `GUILD_ID` | 空 | コマンドを登録するサーバ（ギルド）の ID（空なら全サーバ） |
+| `LOG_LEVEL` | `INFO` | ログの出力レベル（`DEBUG`・`INFO`・`WARNING`・`ERROR`） |
+
+### Docker 版とホスト版の対応
+
+| 項目 | Docker 版 | ホスト版 |
+|---|---|---|
+| 設定 | `.env`（compose の `environment:` の `TOKEN`・`GUILD_ID`・`LOG_LEVEL`） | `/etc/kaikei-san/kaikei-san.env` の同じキー |
+| プログラム | イメージ内の `/workspace` | `/opt/kaikei-san`（venv は `/opt/kaikei-san/venv`） |
+| データベース | ボリューム `kaikeisan-data`（`/workspace/data/kaikei.db`） | `/var/lib/kaikei-san/kaikei.db` |
+| ログ | `docker compose logs` | Ubuntu / Debian は `journalctl -u kaikei-san`、Alpine は syslog（`/var/log/messages` の `kaikei-san` の行） |
+| 再起動 | `docker compose restart` | Ubuntu / Debian は `systemctl restart kaikei-san`、Alpine は `rc-service kaikei-san restart` |
+| 実行ユーザー | コンテナの root | `kaikei-san` |
+| タイムゾーン | `TZ=Asia/Tokyo` | `TZ=Asia/Tokyo` |
 
 ## バックアップ / 復元
 
 データベース（SQLite）をファイルへ出力・復元するスクリプト [scripts/backup.sh](scripts/backup.sh) を用意しています。
-docker-compose 構成と LXC / VM（`install.sh`）構成のどちらでも同じコマンドで使え、構成は自動判別されます
+docker-compose 構成と LXC / VM（ホスト版）構成のどちらでも同じコマンドで使え、構成は自動判別されます
 （両方が存在する場合は `--mode docker` または `--mode native` で指定してください）。
 稼働中でも整合性のあるバックアップを取得できます。
 
@@ -125,11 +147,7 @@ sh scripts/backup.sh restore /path/to/kaikei.db
 - 復元前に、現在のDBがカレントディレクトリへ `kaikei-pre-restore-日時.db` として自動退避されます。
 - 復元時は入力ファイルの整合性（`integrity_check` と `transactions` テーブルの有無）を検証します。確認プロンプトは `--yes` で省略できます。
 - docker 構成では `docker-compose.yaml` のあるリポジトリ内で実行してください（`COMPOSE_FILE` で別ファイルも指定可）。
-- `install.sh` 構成では root で実行してください。インストーラはこのスクリプトを配置しないため、次のように取得できます。
-
-  ```sh
-  wget -O backup.sh https://raw.githubusercontent.com/nllacc/kaikei-san/main/scripts/backup.sh
-  ```
+- ホスト版では root で実行してください。スクリプトは導入先の `/opt/kaikei-san/scripts/backup.sh` にあります。
 
 ## 開発
 

@@ -1,0 +1,3 @@
+TOKEN||required|Discord bot のトークン
+GUILD_ID||optional|コマンドを登録するサーバ（ギルド）の ID（空なら全サーバ）
+LOG_LEVEL|INFO|optional|ログの出力レベル（DEBUG・INFO・WARNING・ERROR）

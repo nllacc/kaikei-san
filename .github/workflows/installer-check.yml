@@ -1,0 +1,30 @@
+# 責務: インストーラの頒布（release-installer.yml）の前に通す、このプロジェクト固有の検査。失敗すると install.sh は生成・頒布されない。
+#   - 起動ラッパー（installer/run/*.sh）の構文・shellcheck
+#   - 単体テスト（pytest）
+name: installer-check
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 起動ラッパーの検査（構文・shellcheck）
+        run: |
+          for f in installer/run/*.sh; do sh -n "$f"; done
+          shellcheck -S warning installer/run/*.sh
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: 単体テスト
+        run: |
+          python3 -m pip install -q -r requirements-dev.txt
+          python3 -m pytest

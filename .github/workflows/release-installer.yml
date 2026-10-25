@@ -1,55 +1,109 @@
+# 責務: インストーラ（install.sh）の検査と頒布。ブランチ・タグへのpush、および手動実行ごとに、そのコミットに固定した install.sh を生成する。
+#   - 検査: installer-check.yml（プロジェクト固有の検査）と、インストーラのシェルの構文・shellcheck
+#   - ブランチ: 生成した install.sh・install.sh.sha256 を、ワークフローのartifact（installer-<ブランチ名>）として保存する。
+#              タグ・Pre-releaseは作らない（ブランチの導入・切り替えは、Releaseのinstall.shを使い --ref <ブランチ名> で指定する）
+#   - タグ（v*）: GitHub Releaseへ install.sh・install.sh.sha256 を添付する
+#       最新:   https://github.com/<owner>/<repo>/releases/latest/download/install.sh
+#       版固定: https://github.com/<owner>/<repo>/releases/download/<タグ>/install.sh
+#   - 手動実行（workflow_dispatch）: 対象ブランチ/タグを選んで再実行すると、上記と同じ処理を再度走らせる
 name: release-installer
 
-# ブランチ push: ローリング prerelease (installer-<branch>) に ref 固定版を添付
-# タグ push (v*): 通常の Release に添付
 on:
   push:
     branches: ["**"]
     tags: ["v*"]
-    paths:
-      - scripts/install.sh
-      - .github/workflows/release-installer.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  check:
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/installer-check.yml
+    secrets: inherit
+
   build:
+    needs: check
     runs-on: ubuntu-latest
+    outputs:
+      artifact: ${{ steps.names.outputs.artifact }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: 構文チェック
+      - name: インストーラ（ブートストラップ）を生成
+        env:
+          REF: ${{ github.ref }}
+          COMMIT: ${{ github.sha }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
         run: |
-          sh -n scripts/install.sh
-          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck -s sh scripts/install.sh
-
-      - name: ref を埋め込む
-        run: |
-          set -eu
-          ref="${GITHUB_REF_NAME}"
           mkdir -p dist
-          sed -e "s|^REPO_REF_DEFAULT=.*|REPO_REF_DEFAULT=\"$ref\"|" \
-            scripts/install.sh >dist/install.sh
-          sh -n dist/install.sh
-          grep -q "^REPO_REF_DEFAULT=\"$ref\"" dist/install.sh
+          sh installer/build-bootstrap.sh "$REF" "$COMMIT" "$REPO_URL" > dist/install.sh
+          (cd dist && sha256sum install.sh > install.sh.sha256)
+          cat dist/install.sh.sha256
 
-      - name: 公開
+      - name: シェルの検査（構文・shellcheck）
+        run: |
+          for f in installer/*.sh dist/install.sh; do sh -n "$f"; done
+          shellcheck -S warning installer/main.sh installer/build-bootstrap.sh installer/app.sh dist/install.sh
+
+      - name: 名前の算出（ブランチ・タグ名の/を-にする）
+        id: names
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          slug=$(printf '%s' "$REF_NAME" | tr '/' '-')
+          echo "artifact=installer-$slug" >> "$GITHUB_OUTPUT"
+
+      - name: 導入・切り替えのコマンドをサマリへ出力
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          ARTIFACT: ${{ steps.names.outputs.artifact }}
+        run: |
+          mode=$(sed -n "s/^INSTALL_MODE='\(.*\)'\$/\1/p" dist/install.sh)
+          ctl=$(sed -n "s/^CTL_NAME='\(.*\)'\$/\1/p" dist/install.sh)
+          ctl_sub=$(sed -n "s/^CTL_SUBCOMMAND='\(.*\)'\$/\1/p" dist/install.sh)
+          [ -z "$ctl_sub" ] || ctl="$ctl $ctl_sub"
+          sudo=''
+          [ "$mode" = system ] && sudo='sudo '
+          {
+            echo "### $REF_NAME の導入・切り替え"
+            echo
+            echo '```sh'
+            echo "curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | ${sudo}sh -s -- install --ref $REF_NAME"
+            echo "${sudo}$ctl update --ref $REF_NAME"
+            echo '```'
+            echo
+            echo "Release がまだ無い場合は、このワークフローの artifact（$ARTIFACT）の install.sh を使う。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.names.outputs.artifact }}
+          path: dist/
+          if-no-files-found: error
+
+  release-tag:
+    # タグ（v*）へのpush・手動実行のときだけ、GitHub Releaseへ添付する。
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: GitHub Releaseへ添付
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          set -eu
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-              gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
-            gh release upload "$GITHUB_REF_NAME" dist/install.sh --clobber
-          else
-            # ブランチ名の / は - に変換する
-            tag="$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
-            gh release view "$tag" >/dev/null 2>&1 ||
-              gh release create "$tag" --prerelease --target "$GITHUB_SHA" \
-                --title "$tag" --notes "ブランチ $GITHUB_REF_NAME 用のインストーラ (自動更新)"
-            gh release upload "$tag" dist/install.sh --clobber
-          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/install.sh dist/install.sh.sha256 --repo "$GITHUB_REPOSITORY" --clobber
