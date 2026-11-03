@@ -10,6 +10,7 @@ from discord.commands import Option
 import db
 import formatting
 import interaction
+import login_retry
 import repository
 
 TOKEN = os.environ["TOKEN"]
@@ -21,7 +22,15 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(levelname)s %(message)s")
 logger = logging.getLogger("kaikei_san")
 
-bot = discord.Bot(
+
+class KaikeiBot(discord.Bot):
+    """起動時のネットワーク障害でプロセスが終了しないよう、login だけを再試行する bot。"""
+
+    async def login(self, token: str) -> None:
+        await login_retry.login_with_retry(super().login, token, logger=logger)
+
+
+bot = KaikeiBot(
     intents=discord.Intents.default(),
     activity=discord.Game("貸し借りの記録"),
     debug_guilds=DEBUG_GUILDS,
