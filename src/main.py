@@ -27,7 +27,19 @@ class KaikeiBot(discord.Bot):
     """起動時のネットワーク障害でプロセスが終了しないよう、login だけを再試行する bot。"""
 
     async def login(self, token: str) -> None:
-        await login_retry.login_with_retry(super().login, token, logger=logger)
+        await login_retry.login_with_retry(self._login_once, token, logger=logger)
+
+    async def _login_once(self, token: str) -> None:
+        """1回分のログインを行う。失敗時は static_login が作った HTTP セッションを閉じる。
+
+        py-cord は static_login の呼び出しごとに新しいセッションを作り、失敗しても閉じないため、
+        閉じずに再試行するとセッションが再試行回数分だけ残ってしまう。
+        """
+        try:
+            await super().login(token)
+        except Exception:
+            await self.http.close()
+            raise
 
 
 bot = KaikeiBot(
